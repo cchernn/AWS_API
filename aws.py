@@ -5,11 +5,10 @@ from errors import error_handler
 region_default = "us-east-2"
 
 class AWS:
-    def __init__(self, region=None, path=None):
+    def __init__(self, region=region_default):
         # region, session, path
-        self.region = region_default
+        self.region = region
         self.CreateSession(self.region) # declare self.session
-        self.path = os.getenv("HOME") if path is None else path
 
     @error_handler()
     def CreateSession(self, region=None):

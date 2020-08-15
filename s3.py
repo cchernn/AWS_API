@@ -8,9 +8,10 @@ from aws import AWS, error_handler
 
 class S3(AWS):
     def __init__(self, region=None, path=None):
-        super().__init__(region=region, path=path)
+        super().__init__(region=region)
         super().CreateResource("s3") # declare self.resource
         self.bucket = None
+        self.path = os.getenv("HOME") if path is None else path
 
     @error_handler()
     def CreateBucketName(self, bucket_prefix):
