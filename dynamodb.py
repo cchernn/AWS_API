@@ -10,7 +10,7 @@ class DynamoDB(AWS):
         super().__init__(region=region)
         super().CreateResource("dynamodb")
         self.table = None
-        self.tableAttributes = None
+        self.fields = []
 
     @error_handler()
     def ValidateSchema(self, schema):
@@ -38,7 +38,7 @@ class DynamoDB(AWS):
             } for item in schema]
         else:
             raise Exception()
-        self.resource.create_table(
+        response = self.resource.create_table(
             TableName=table_name, 
             AttributeDefinitions=attribute_definitions, 
             KeySchema=key_schema,
@@ -47,37 +47,90 @@ class DynamoDB(AWS):
                 "WriteCapacityUnits":1
             }
         )
+        response.wait_until_exists()
         self.table = self.resource.Table(table_name)
-        self.tableAttributes = [x["AttributeName"] for x in self.table.attribute_definitions]
-
-    @error_handler()
-    def ListTables(self):
-        print("Existing tables:")
-        for table in list(self.resource.tables.all()):
-            print(f"    {table.name}")
-
-    @error_handler()
-    def GetTable(self, table_name):
-        self.table = self.resource.Table(table_name)
-        self.tableAttributes = [x["AttributeName"] for x in self.table.attribute_definitions]
-        return self.table
+        self.fields = [x["AttributeName"] for x in self.table.attribute_definitions]
+        return {
+            "Table": self.table.name,
+            "Fields": self.fields
+        }
 
     @error_handler(ClientError)
-    def UploadData(self, table_name, input=[]):
+    def GetTables(self):
+        return list(self.resource.tables.all())
+        # return {
+        #     "Tables": list(self.resource.tables.all())
+        # }
+
+    @error_handler(ClientError)
+    def GetTableAllItems(self, table_name=None):
+        if table_name is None:
+            result = self.table.scan()['Items']
+        else:
+            result = self.resource.Table(table_name).scan()['Items']
+        return result
+        # return {
+        #     "Items": result
+        # }
+
+    @error_handler(ClientError)
+    def GetActiveTable(self, table_name):
+        self.table = self.resource.Table(table_name)
+        self.fields = [x["AttributeName"] for x in self.table.attribute_definitions]
+        return self.table
+        # return {
+        #     "Table": self.table.name,
+        #     "Fields": self.fields
+        # }
+
+    @error_handler(ClientError)
+    def GetQueryItems(self, query, table_name=None):
+        if table_name is None:
+            workingTable = self.table
+        else:
+            workingTable = self.resource.Table(table_name)
+        result = workingTable.get_item(Key = query)
+        return result
+        # return {
+        #     "Items": result
+        # }
+
+    @error_handler(ClientError)
+    def PutItems(self, input, table_name=None):
+        if table_name is None:
+            table_name = self.table.name
         if type(input)==str and input[-5:]==".json" and os.path.exists(input):
             with open(input, 'r') as fdata:
                 items = json.load(fdata)
         else:
-            items = json.load(input)
+            items = json.loads(json.dumps(input))
         entrybatchlist = []
         for item in items:
             entrybatchlist.append({'PutRequest': {'Item':item}})
-        entrybatch = {table_name: entrybatchlist}
-        response = self.resource.batch_write_item(RequestItems=entrybatch, ReturnItemCollectionMetrics='SIZE')
-        print(response)
+        max_item_count = len(entrybatchlist)
+        item_count = 0
+        max_items = 25
+        unprocessedItems = []
+        while item_count < max_item_count:
+            if item_count+max_items >= max_item_count:
+                tempbatchlist = entrybatchlist[item_count:item_count+max_item_count]
+            else:
+                tempbatchlist = entrybatchlist[item_count:item_count+max_items]
+            entrybatch = {table_name: tempbatchlist}
+            response = self.resource.batch_write_item(RequestItems=entrybatch, ReturnItemCollectionMetrics='SIZE')
+            if len(response["UnprocessedItems"]) > 0:
+                unprocessedItems.append(response["UnprocessedItems"]) 
+            item_count += max_items
+        return {
+            "Table": table_name,
+            "Items_Count": max_item_count,
+            "Unprocessed_Items": unprocessedItems
+        }
     
     @error_handler(ClientError)
-    def DeleteData(self, table_name, input=[]):
+    def DeleteItems(self, input, table_name=None):
+        if table_name is None:
+            table_name = self.table.name
         if type(input)==str and input[-5:]==".json" and os.path.exists(input):
             with open(input, 'r') as fdata:
                 items = json.load(fdata)
@@ -86,14 +139,30 @@ class DynamoDB(AWS):
         entrybatchlist = []
         for item in items:
             entrybatchlist.append({'DeleteRequest': {'Key':item}})
-        entrybatch = {table_name: entrybatchlist}
-        response = self.resource.batch_write_item(RequestItems=entrybatch, ReturnItemCollectionMetrics='SIZE')
-        print(response)
+        max_item_count = len(entrybatchlist)
+        item_count = 0
+        max_items = 25
+        unprocessedItems = []
+        while item_count < max_item_count:
+            if item_count+max_items >= max_item_count:
+                tempbatchlist = entrybatchlist[item_count:item_count+max_item_count]
+            else:
+                tempbatchlist = entrybatchlist[item_count:item_count+max_items]
+            entrybatch = {table_name: tempbatchlist}
+            response = self.resource.batch_write_item(RequestItems=entrybatch, ReturnItemCollectionMetrics='SIZE')
+            if len(response["UnprocessedItems"]) > 0:
+                unprocessedItems.append(response["UnprocessedItems"]) 
+            item_count += max_items
+        return {
+            "Table": table_name,
+            "Items_Count": max_item_count,
+            "Unprocessed_Items": unprocessedItems
+        }
 
     @error_handler(ClientError)
     def DeleteTable(self, table_name):
-        response = self.GetTable(table_name).delete()
-        print(response)
+        response = self.resource.Table(table_name).delete()
+        return response
 
 if __name__ == "__main__":
     pass

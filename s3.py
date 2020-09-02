@@ -26,25 +26,31 @@ class S3(AWS):
         bucket_name = self.CreateBucketName(bucket_prefix=bucket_name)
         self.resource.create_bucket(Bucket=bucket_name, CreateBucketConfiguration=location)
         self.bucket = self.resource.Bucket(bucket_name)
+        return {
+            "Bucket": bucket_name
+        }
 
     @error_handler(ClientError)
-    def ListBuckets(self):
-        print("Existing buckets:")
-        for bucket in self.resource.buckets.all():
-            print(f"    {bucket.name}")
+    def GetBuckets(self):
+        return list(self.resource.buckets.all())
+        # return {
+        #     "Buckets": list(self.resource.buckets.all())
+        # }
 
     @error_handler(ClientError)
-    def ListObjects(self, bucket=None):
+    def GetObjects(self, bucket_name=None):
         if bucket is None:
             bucket = self.bucket
         else:
-            bucket = self.GetBucket(bucket)
-        print(f"Items in {bucket.name}")
-        for i, obj in enumerate(bucket.objects.all()):
-            print(f"{i+1}. {obj.key}")
+            bucket = self.resource.Bucket(bucket)
+        objs = bucket.objects.all()
+        return objs
+        # return {
+        #     "Objects": objs
+        # }
 
     @error_handler(ClientError)
-    def GetBucket(self, bucket_name):
+    def GetActiveBucket(self, bucket_name):
         response = self.resource.meta.client.head_bucket(Bucket=bucket_name)
         if response:
             self.bucket = self.resource.Bucket(bucket_name)
@@ -75,9 +81,12 @@ class S3(AWS):
         if validFile is not None:
             file_path, file_key = validFile
             bucket.upload_file(file_path, file_key)
-            print(f"{'/' + file_key} uploaded into {bucket.name}.")
-        # else:
-            # print("Invalid path. File does not exists.")
+            return {
+                "Bucket": bucket.name,
+                "File_Uploaded": file_key
+            }
+        else:
+            return None
 
     @error_handler(ClientError)
     def UploadFiles(self, bucket_name, folder_path):
@@ -94,15 +103,18 @@ class S3(AWS):
         for obj_version in bucket.object_versions.all():
             res.append({'Key': obj_version.key,
                         'VersionId': obj_version.id})
-        bucket.delete_objects(Delete={'Objects': res})
+        response = bucket.delete_objects(Delete={'Objects': res})
+        return response
 
     @error_handler(ClientError)
     def DeleteBucket(self, bucket_name):
-        self.resource.Bucket(bucket_name).delete()
+        response = self.resource.Bucket(bucket_name).delete()
+        return response
 
     @error_handler(ClientError)
     def DeleteFile(self, bucket_name, file_name):
-        self.resource.Object(bucket_name, file_name).delete()
+        response = self.resource.Object(bucket_name, file_name).delete()
+        return response
 
 if __name__ == "__main__":
     pass
