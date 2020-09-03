@@ -21,5 +21,9 @@ class AWS:
     def CreateResource(self, resource):
         self.resource = self.session.resource(resource)
 
+    @error_handler()
+    def CreateClient(self, client):
+        self.client = self.session.client(client)
+
 if __name__ == "__main__":
     pass
